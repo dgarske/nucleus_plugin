@@ -1,0 +1,17 @@
+component("simple_server") {
+    parent     "nu.samples.net"
+    version      "1.0.0"
+    description "This component implements sample application code for Nucleus NET."
+    enable false
+
+    requires("nu.os.drvr.serial")
+    requires("nu.os.drvr.eth")
+    requires("nu.os.net.stack")
+
+    executable("simple_server.out") {
+        cflags "csgnu_arm" => "-Wno-strict-aliasing"
+        cflags "csgnu_ppc" => "-Wno-strict-aliasing"
+        sources { Dir.glob("*.c") }
+        libraries { ["nucleus.lib"] }
+    }
+}

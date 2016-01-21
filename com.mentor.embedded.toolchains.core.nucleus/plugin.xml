@@ -1,0 +1,576 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+	<!--
+		****************************************************************************
+		* * Copyright (c) 2010 Mentor Graphics Corp. * * PROPRIETARY RIGHTS of
+		Mentor Graphics Corp. are involved in the * subject matter of this
+		material. All manufacturing, reproduction, * use, and sales rights
+		pertaining to this subject matter are governed * by the license
+		agreement. The recipient of this software implicitly * accepts the
+		terms of the license. *
+		****************************************************************************
+	-->
+<plugin>
+
+	<extension 
+		id="GCCManagedMakePerProjectProfileC"
+		name="Nucleus GNU C/C++ managed make per project SCD profile" 
+		point="org.eclipse.cdt.make.core.ScannerConfigurationDiscoveryProfile">
+		<scannerInfoCollector
+			class="org.eclipse.cdt.make.internal.core.scannerconfig2.PerProjectSICollector"
+			scope="project" />
+		<buildOutputProvider>
+			<open />
+			<scannerInfoConsoleParser class="org.eclipse.cdt.managedbuilder.internal.scannerconfig.ManagedGCCScannerInfoConsoleParser" />
+		</buildOutputProvider>
+		<scannerInfoProvider 
+			providerId="specsFile">
+			<run arguments="-E -P -v -dD ${plugin_state_location}/specs.c"
+				command="gcc"
+				class="com.mentor.embedded.toolchains.core.nucleus.cdt.scanner.NucleusGCCSpecsRunSIProvider" />
+			<scannerInfoConsoleParser class="org.eclipse.cdt.make.internal.core.scannerconfig.gnu.GCCSpecsConsoleParser" />
+		</scannerInfoProvider>
+	</extension>
+
+	<extension 
+		id="GCCManagedMakePerProjectProfileCPP"
+		name="Mentor GNU C/C++ managed make per project SCD profile" 
+		point="org.eclipse.cdt.make.core.ScannerConfigurationDiscoveryProfile">
+		<scannerInfoCollector
+			class="org.eclipse.cdt.make.internal.core.scannerconfig2.PerProjectSICollector"
+			scope="project" />
+		<buildOutputProvider>
+			<open />
+			<scannerInfoConsoleParser class="org.eclipse.cdt.managedbuilder.internal.scannerconfig.ManagedGCCScannerInfoConsoleParser" />
+		</buildOutputProvider>
+		<scannerInfoProvider providerId="specsFile">
+			<run arguments="-E -P -v -dD ${plugin_state_location}/specs.cpp"
+				command="g++"
+				class="com.mentor.embedded.toolchains.core.nucleus.cdt.scanner.NucleusGCCSpecsRunSIProvider" />
+			<scannerInfoConsoleParser class="org.eclipse.cdt.make.internal.core.scannerconfig.gnu.GCCSpecsConsoleParser" />
+		</scannerInfoProvider>
+	</extension>
+
+	<extension point="org.eclipse.cdt.managedbuilder.core.buildDefinitions">
+		<managedBuildRevision fileVersion="4.0.0">
+		</managedBuildRevision>
+		<toolChain archList="all"
+			configurationEnvironmentSupplier="com.mentor.embedded.toolchains.core.nucleus.cdt.build.EnvironmentVariableSupplier"
+			id="cdt.managedbuild.toolchain.gnu.mentor.nucleus" 
+			isAbstract="false"
+            targetTool="cdt.managedbuild.tool.gnu.mentor.c.linker;cdt.managedbuild.tool.gnu.mentor.cpp.linker;cdt.managedbuild.tool.gnu.archiver"
+			name="Sourcery CodeBench for Nucleus" 
+			osList="all">
+			<targetPlatform 
+				archList="all" 
+				binaryParser="org.eclipse.cdt.core.ELF"
+				id="cdt.managedbuild.targetPlatform.gnu.mentor.nucleus" 
+				isAbstract="false"
+				osList="all">
+			</targetPlatform>
+			<builder
+				 command="$(MAKE)"
+		         buildfileGenerator="com.mentor.embedded.toolchains.core.nucleus.cdt.build.NucleusMakefileGenerator"
+		         commandLauncher="com.mentor.embedded.toolchains.core.nucleus.cdt.build.NucleusCommandLauncher"
+		         errorParsers="org.eclipse.cdt.core.CWDLocator;org.eclipse.cdt.core.GmakeErrorParser;com.mentor.embedded.toolchains.core.nucleus.FuseErrorParser"
+		         id="cdt.managedbuild.builder.gnu.mentor.nucleus"
+		         isAbstract="false"
+		         isVariableCaseSensitive="false"
+		         name="CodeSourcery GNU Builder"
+		         superClass="cdt.managedbuild.target.gnu.builder">
+			</builder>
+			<tool 
+				command="${AR}" 
+				id="cdt.managedbuild.tool.gnu.mentor.archiver.nucleus"
+				name="CodeSourcery GNU Archiver" 
+				superClass="cdt.managedbuild.tool.gnu.archiver.base">
+			</tool>
+			<tool 
+				id="cdt.managedbuild.tool.gnu.mentor.cpp.compiler.nucleus"
+				name="CodeSourcery GNU C++ Compiler"
+				superClass="cdt.managedbuild.tool.gnu.mentor.cpp.compiler">
+				<inputType 
+					sourceContentType="org.eclipse.cdt.core.cxxSource"
+					sources="cc,cxx,cpp" 
+					dependencyContentType="org.eclipse.cdt.core.cxxHeader"
+					dependencyExtensions="h,H,hpp"
+					dependencyCalculator="com.mentor.embedded.toolchains.core.nucleus.cdt.build.DefaultGCCDependencyCalculator3"
+					id="cdt.managedbuild.tool.gnu.mentor.cpp.compiler.nucleus.input"
+					scannerConfigDiscoveryProfileId="com.mentor.embedded.toolchains.core.nucleus.GCCManagedMakePerProjectProfileCPP|org.eclipse.cdt.make.core.GCCStandardMakePerFileProfile"
+					languageId="org.eclipse.cdt.core.g++">
+				</inputType>
+			</tool>
+			<tool 
+				id="cdt.managedbuild.tool.gnu.mentor.c.compiler.nucleus"
+				name="CodeSourcery GNU C Compiler"
+				superClass="cdt.managedbuild.tool.gnu.mentor.c.compiler">
+				<inputType 
+					sourceContentType="org.eclipse.cdt.core.cSource"
+					sources="c,C" 
+					dependencyContentType="org.eclipse.cdt.core.cHeader"
+					dependencyExtensions="h"
+					dependencyCalculator="com.mentor.embedded.toolchains.core.nucleus.cdt.build.DefaultGCCDependencyCalculator3"
+					id="cdt.managedbuild.tool.gnu.mentor.c.compiler.nucleus.input"
+					scannerConfigDiscoveryProfileId="com.mentor.embedded.toolchains.core.nucleus.GCCManagedMakePerProjectProfileC"
+					languageId="org.eclipse.cdt.core.gcc">
+				</inputType>
+			</tool>
+			<tool
+				commandLineGenerator="com.mentor.embedded.toolchains.core.nucleus.cdt.build.CommandLineGenerator"
+				id="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus"
+				name="CodeSourcery GNU C Linker"
+				superClass="cdt.managedbuild.tool.gnu.mentor.c.linker">
+	            <inputType  
+					id="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus.dependency">
+					<additionalInput 
+						paths="$(SYSTEM_DEP)" 
+						kind="additionaldependency">
+					</additionalInput>
+				</inputType>
+	            <inputType  
+					id="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus.input">
+					<additionalInput 
+						paths="$(NUCLEUS_LIBS)" 
+						kind="additionalinput">
+					</additionalInput>
+     <enablement
+           type="ALL">
+        <checkBuildProperty
+              property="org.eclipse.cdt.build.core.buildArtefactType"
+              value="org.eclipse.cdt.build.core.buildArtefactType.exe">
+        </checkBuildProperty>
+     </enablement>
+				</inputType>
+             <inputType
+                   id="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus.process.input">
+                <additionalInput
+                      kind="additionalinput"
+                      paths="$(NUCLEUS_PROC_LIBS)">
+                </additionalInput>
+                <enablement
+                      type="ALL">
+                   <checkBuildProperty
+                         property="org.eclipse.cdt.build.core.buildArtefactType"
+                         value="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process">
+                   </checkBuildProperty>
+                </enablement>
+             </inputType> 
+					<enablement type="ALL">
+					<not>
+						<checkBuildProperty 
+							property="org.eclipse.cdt.build.core.buildArtefactType"
+							value="org.eclipse.cdt.build.core.buildArtefactType.staticLib" />
+					</not>
+				</enablement>
+			</tool>
+			<tool
+				commandLineGenerator="com.mentor.embedded.toolchains.core.nucleus.cdt.build.CommandLineGenerator"
+				id="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus"
+				name="CodeSourcery GNU C++ Linker"
+				superClass="cdt.managedbuild.tool.gnu.mentor.cpp.linker">
+	            <inputType  
+					id="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus.dependency">
+					<additionalInput 
+						paths="$(SYSTEM_DEP)" 
+						kind="additionaldependency">
+					</additionalInput>
+				</inputType>
+	            <inputType  
+					id="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus.input">
+					<additionalInput 
+						paths="$(NUCLEUS_LIBS)" 
+						kind="additionalinput">
+					</additionalInput>
+     <enablement
+           type="ALL">
+        <checkBuildProperty
+              property="org.eclipse.cdt.build.core.buildArtefactType"
+              value="org.eclipse.cdt.build.core.buildArtefactType.exe">
+        </checkBuildProperty>
+     </enablement>
+				</inputType>
+             <inputType
+                   id="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus.process.input">
+                <additionalInput
+                      kind="additionalinput"
+                      paths="$(NUCLEUS_PROC_LIBS)">
+                </additionalInput>
+                <enablement
+                      type="ALL">
+                   <checkBuildProperty
+                         property="org.eclipse.cdt.build.core.buildArtefactType"
+                         value="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process">
+                   </checkBuildProperty>
+                </enablement>
+             </inputType> 
+				<enablement 
+					type="ALL">
+					<not>
+						<checkBuildProperty 
+							property="org.eclipse.cdt.build.core.buildArtefactType"
+							value="org.eclipse.cdt.build.core.buildArtefactType.staticLib" />
+					</not>
+				</enablement>
+			</tool>
+			<tool
+         command="${AS}"
+         id="cdt.managedbuild.tool.gnu.mentor.assembler.nucleus"
+         name="CodeSourcery GNU Assembler"
+         superClass="cdt.managedbuild.tool.gnu.assembler.base">
+      <option
+            applicabilityCalculator="com.mentor.embedded.toolchains.core.cdt.build.OptionApplicabilityCalculator"
+            command="${ASFLAGS} ${ARCH_ASFLAGS}"
+            defaultValue="true"
+            id="codesourcery.gnu.assembler.option.target_asflags"
+            isAbstract="false"
+            name="Enable TARGET_ASFLAGS"
+            valueType="boolean">
+      </option>
+      <option
+            applicabilityCalculator="com.mentor.embedded.toolchains.core.cdt.build.OptionApplicabilityCalculator"
+            command="${PROC_ASFLAGS} ${ARCH_PROC_ASFLAGS}"
+            defaultValue="true"
+            id="codesourcery.gnu.assembler.option.target_proc_asflags"
+            isAbstract="false"
+            name="Enable Target PROC_ASFLAGS"
+            valueType="boolean">
+      </option>
+			</tool>
+   <tool
+         command="nuexportgen"
+         commandLinePattern="${COMMAND} &quot;$(basename $&lt;)&quot; $(OBJS) [CC] ${CC} ${PROC_CFLAGS} ${ARCH_PROC_CFLAGS} ${INCLUDES} -c -x c ${OUTPUT_FLAG} ${OUTPUT_PREFIX}${OUTPUT} &quot;$(basename $&lt;).cxp&quot;"
+         id="com.mentor.embedded.toolchains.core.nucleus.exportgen"
+         name="Nucleus Exports Generator"
+         outputFlag="-o">
+      <inputType
+            dependencyContentType="org.eclipse.cdt.managedbuilder.core.compiledObjectFile"
+            dependencyExtensions="o"
+            id="com.mentor.embedded.toolchains.core.nucleus.exportgen.input"
+            primaryInput="true"
+            scannerConfigDiscoveryProfileId="com.mentor.embedded.toolchains.core.nucleus.GCCManagedMakePerProjectProfileC"
+            sources="nxp">
+         <additionalInput
+               kind="additionaldependency"
+               paths="$(OBJS)">
+         </additionalInput>
+      </inputType>
+      <outputType
+            buildVariable="OBJ_EXP"
+            id="com.mentor.embedded.toolchains.core.nucleus.exportgen.output"
+            outputs="oxp"
+            primaryInputType="com.mentor.embedded.toolchains.core.nucleus.exportgen.input"
+            primaryOutput="true">
+      </outputType>
+      <enablement
+            type="ALL">
+         <checkBuildProperty
+               property="org.eclipse.cdt.build.core.buildArtefactType"
+               value="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process">
+         </checkBuildProperty>
+      </enablement>
+   </tool>
+		   <option
+		   name="%NucleusToolsetOption.name"
+           category="com.mentor.embedded.toolchains.core.nucleus.nucleusOptionsCategory"
+           defaultValue="csgnu"
+           id="com.mentor.embedded.toolchains.core.nucleus.toolset"
+           isAbstract="true"
+           resourceFilter="all"
+           valueType="string">
+		   </option>
+     <option
+           category="com.mentor.embedded.toolchains.core.nucleus.nucleusOptionsCategory"
+           id="com.mentor.embedded.toolchains.core.nucleus.process.mode"
+           isAbstract="false"
+           name="%ProcessModeOption.name"
+           resourceFilter="project"
+           valueHandler="com.mentor.embedded.toolchains.core.nucleus.cdt.build.ProcessModeOptionValueHandler"
+           valueType="enumerated">
+        <enumeratedOptionValue
+              id="com.mentor.embedded.toolchains.core.nucleus.process.mode.user"
+              isDefault="true"
+              name="User">
+        </enumeratedOptionValue>
+        <enumeratedOptionValue
+              id="com.mentor.embedded.toolchains.core.nucleus.process.mode.kernel"
+              isDefault="false"
+              name="Kernel">
+        </enumeratedOptionValue>
+        <enablement
+              type="ALL">
+           <checkBuildProperty
+                 property="org.eclipse.cdt.build.core.buildArtefactType"
+                 value="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process">
+           </checkBuildProperty>
+        </enablement>
+     </option>
+		   
+     <optionCategory
+           id="com.mentor.embedded.toolchains.core.nucleus.nucleusOptionsCategory"
+           name="%NucleusOptions.name">
+     </optionCategory>
+		</toolChain>
+		<projectType 
+			buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe"
+			id="cdt.managedbuild.target.gnu.mentor.nucleus.exe" 
+			isAbstract="false"
+			isTest="false">
+			<configuration
+         artifactExtension="out"
+         buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug"
+         cleanCommand="rm -rf"
+         id="cdt.managedbuild.config.gnu.mentor.nucleus.exe.debug"
+         name="Debug"
+         parent="cdt.managedbuild.config.gnu.base">
+				<toolChain 
+					superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus"
+					id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.exe.debug">
+				</toolChain>
+			</configuration>
+			<configuration
+         artifactExtension="out"
+         buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release"
+         cleanCommand="rm -rf"
+         id="cdt.managedbuild.config.gnu.mentor.nucleus.exe.release"
+         name="Release"
+         parent="cdt.managedbuild.config.gnu.base">
+				<toolChain 
+					superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus"
+					id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.exe.release">
+				</toolChain>
+			</configuration>
+		</projectType>
+		<projectType 
+			buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.staticLib"
+			id="cdt.managedbuild.target.gnu.mentor.nucleus.lib" 
+			isAbstract="false"
+			isTest="false">
+			<configuration
+         artifactExtension="a"
+         buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug"
+         cleanCommand="rm -rf"
+         id="cdt.managedbuild.config.gnu.mentor.nucleus.lib.debug"
+         name="Debug"
+         parent="cdt.managedbuild.config.gnu.base">
+				<toolChain superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus"
+					id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.lib.debug">
+				</toolChain>
+			</configuration>
+			<configuration
+         artifactExtension="a"
+         buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release"
+         cleanCommand="rm -rf"
+         id="cdt.managedbuild.config.gnu.mentor.nucleus.lib.release"
+         name="Release"
+         parent="cdt.managedbuild.config.gnu.base">
+				<toolChain 
+					superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus"
+					id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.lib.release">
+				</toolChain>
+			</configuration>
+		</projectType>
+  <projectType
+        buildArtefactType="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process"
+        id="com.mentor.embedded.toolchains.core.nucleus.process"
+        isAbstract="false"
+        isTest="false">
+     <configuration
+           artifactExtension="out"
+           buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug"
+           cleanCommand="rm -rf"
+           id="cdt.managedbuild.config.gnu.mentor.nucleus.process.debug"
+           name="Debug"
+           parent="cdt.managedbuild.config.gnu.base">
+        <toolChain
+              id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.process.debug"
+              superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus">
+           <tool
+                 command="$(CROSS)nuproclink"
+                 id="com.mentor.embedded.toolchains.core.nucleus.process.c.linker.debug"
+                 isAbstract="false"
+                 name="Nucleus Process Linker"
+                 superClass="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus">
+              <inputType
+                    buildVariable="OBJ_EXP"
+                    dependencyExtensions="nxp"
+                    id="com.mentor.embedded.toolchains.core.nucleus.process.c.linker.debug.input"
+                    multipleOfType="true"
+                    sources="oxp">
+              </inputType>
+           </tool>
+           <tool
+                 command="$(CROSS)nuproclink"
+                 id="com.mentor.embedded.toolchains.core.nucleus.process.cpp.linker.debug"
+                 isAbstract="false"
+                 name="Nucleus Process Linker"
+                 superClass="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus">
+              <inputType
+                    buildVariable="OBJ_EXP"
+                    dependencyExtensions="nxp"
+                    id="com.mentor.embedded.toolchains.core.nucleus.process.cpp.linker.debug.input"
+                    multipleOfType="true"
+                    sources="oxp">
+              </inputType>
+           </tool>
+        </toolChain>
+     </configuration>
+     <configuration
+           artifactExtension="out"
+           buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release"
+           cleanCommand="rm -rf"
+           id="cdt.managedbuild.config.gnu.mentor.nucleus.process.release"
+           name="Release"
+           parent="cdt.managedbuild.config.gnu.base">
+        <toolChain
+              id="cdt.managedbuild.toolchain.gnu.mentor.nucleus.process.release"
+              superClass="cdt.managedbuild.toolchain.gnu.mentor.nucleus">
+           <tool
+                 command="$(CROSS)nuproclink"
+                 id="com.mentor.embedded.toolchains.core.nucleus.process.c.linker.release"
+                 isAbstract="false"
+                 name="Nucleus Process Linker"
+                 superClass="cdt.managedbuild.tool.gnu.mentor.c.linker.nucleus">
+              <inputType
+                    buildVariable="OBJ_EXP"
+                    dependencyExtensions="nxp"
+                    id="com.mentor.embedded.toolchains.core.nucleus.process.c.linker.release.input"
+                    multipleOfType="true"
+                    sources="oxp">
+              </inputType>
+           </tool>
+           <tool
+                 command="$(CROSS)nuproclink"
+                 id="com.mentor.embedded.toolchains.core.nucleus.process.cpp.linker.release"
+                 isAbstract="false"
+                 name="Nucleus Process Linker"
+                 superClass="cdt.managedbuild.tool.gnu.mentor.cpp.linker.nucleus">
+              <inputType
+                    buildVariable="OBJ_EXP"
+                    dependencyExtensions="nxp"
+                    id="com.mentor.embedded.toolchains.core.nucleus.process.cpp.linker.release.input"
+                    multipleOfType="true"
+                    sources="oxp">
+              </inputType>
+           </tool>
+        </toolChain>
+     </configuration>
+  </projectType>
+  
+  <projectType
+        id="com.mentor.embedded.toolchains.nucleus.systemProject"
+        isAbstract="false"
+        name="System Project">
+  </projectType>
+
+  <projectType
+        id="com.mentor.embedded.toolchains.nucleus.binarySystemProject"
+        isAbstract="false"
+        name="Binary System Project">
+  </projectType>
+  <projectType
+        id="com.mentor.embedded.toolchains.nucleus.safetyCertSystemProject"
+        isAbstract="false"
+        name="SafetyCert System Project">
+  </projectType>
+  
+	</extension>
+	<extension point="org.eclipse.cdt.core.templates">
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.MqttClientDemo"
+			location="$nl$/templates/networking/mqtt_client/template.xml"
+			projectType="org.eclipse.cdt.build.core.buildArtefactType.exe">
+		</template>
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.TLSClientDemo"
+			location="$nl$/templates/networking/tls_client/template.xml"
+			projectType="org.eclipse.cdt.build.core.buildArtefactType.exe">
+		</template>
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.TLSServerDemo"
+			location="$nl$/templates/networking/tls_server/template.xml"
+			projectType="org.eclipse.cdt.build.core.buildArtefactType.exe">
+		</template>
+	</extension>
+	
+	<extension point="org.eclipse.cdt.core.templateAssociations">
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.MqttClientDemo">
+			<toolChain id="cdt.managedbuild.toolchain.gnu.mentor.nucleus"/>
+		</template>
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.TLSClientDemo">
+			<toolChain id="cdt.managedbuild.toolchain.gnu.mentor.nucleus"/>
+		</template>
+		<template
+			id="com.mentor.embedded.toolchains.core.nucleus.templates.TLSServerDemo">
+			<toolChain id="cdt.managedbuild.toolchain.gnu.mentor.nucleus"/>
+		</template>
+	</extension>
+
+  <extension point="org.eclipse.core.expressions.propertyTesters">
+  	<propertyTester
+  		class="com.mentor.embedded.toolchains.core.nucleus.properties.ProjectTypePropertyTester"
+  		id="com.mentor.embedded.toolchains.ui.nucleus.projectTypePropertyTester"
+  		namespace="com.mentor.embedded.toolchains.nucleus" properties="IsSystemProject"
+  		type="org.eclipse.core.runtime.IAdaptable" >
+  	</propertyTester>
+   <propertyTester
+         class="com.mentor.embedded.toolchains.core.nucleus.properties.ProjectTypePropertyTester"
+         id="com.mentor.embedded.toolchains.ui.nucleus.projectTypePropertyTester"
+         namespace="com.mentor.embedded.toolchains.nucleus"
+         properties="IsBinarySystemProject"
+         type="org.eclipse.core.runtime.IAdaptable">
+   </propertyTester>
+  	<propertyTester
+  		class="com.mentor.embedded.toolchains.core.nucleus.properties.ProjectTypePropertyTester"
+  		id="com.mentor.embedded.toolchains.ui.nucleus.projectTypePropertyTester"
+  		namespace="com.mentor.embedded.toolchains.nucleus" properties="IsUserProject"
+  		type="org.eclipse.core.runtime.IAdaptable" >
+  	</propertyTester>
+   <propertyTester
+         class="com.mentor.embedded.toolchains.core.nucleus.properties.ProjectTypePropertyTester"
+         id="com.mentor.embedded.toolchains.ui.nucleus.projectTypePropertyTester"
+         namespace="com.mentor.embedded.toolchains.nucleus"
+         properties="IsProcessProject"
+         type="org.eclipse.core.runtime.IAdaptable">
+   </propertyTester>
+  </extension>
+
+	<extension point="org.eclipse.core.resources.natures" 
+		id="SystemProject" 
+		name="%NucleusSystemProjectNature.name" >
+		<runtime>
+			<run class="com.mentor.embedded.toolchains.core.nucleus.systemproject.SystemProjectNature" />
+		</runtime>
+	</extension>
+
+	<extension point="org.eclipse.cdt.core.ErrorParser" 
+		id="com.mentor.embedded.toolchains.core.nucleus.FuseErrorParser"
+		name="%NucleusFuseErrorParser.name" >
+		<errorparser
+			id="com.mentor.embedded.toolchains.core.nucleus.FuseErrorParser"
+			name="%NucleusFuseErrorParser.name" >
+		     <pattern
+		           description-expr="$2"
+		           eat-processed-line="false"
+		           file-expr="$1"
+		           regex="(.+): error: (.+)"
+		           severity="Error">
+		     </pattern>
+		</errorparser>
+	</extension>
+ <extension
+       point="org.eclipse.ui.startup">
+    <startup
+          class="com.mentor.embedded.toolchains.core.nucleus.Startup">
+    </startup>
+ </extension>
+ <extension
+       point="org.eclipse.cdt.managedbuilder.core.buildProperties">
+    <propertyValue
+          id="com.mentor.embedded.toolchains.core.nucleus.buildArtifactType.process"
+          name="Nucleus Process"
+          property="org.eclipse.cdt.build.core.buildArtefactType">
+    </propertyValue>
+ </extension>
+</plugin>
