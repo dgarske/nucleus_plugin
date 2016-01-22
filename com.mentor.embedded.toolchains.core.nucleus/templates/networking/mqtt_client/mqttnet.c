@@ -55,25 +55,40 @@
     #define SOCKET_T        SOCKET
     #define SOERROR_T       char
     #define SELECT_FD(fd)   (fd)
+    #define SOCK_CLOSE      closesocket
 
 /* Nucleus */
-#elif defined(CONFIG_NUCLEUS_OS)
+#elif defined(NUCLEUS)
+	#include "nucleus.h"
     #include "networking/nu_networking.h"
-    #define FD_TYPE         FD_SET
-    #define FD_ZERO         NU_FD_Init
-    #define FD_SET          NU_FD_Set
-    #define FD_ISSET        NU_FD_Check
-    #define select          NU_Select
-    #define connect         NU_Connect
-    #define send            NU_Send
-    #define read            NU_Recv
-    #define SOCKET_T        INT
-    #define SOERROR_T       INT
-    #define NO_SOCK_TIMEOUT
 
-    #if 0
-    struct addr_struct  client_addr;
-    #endif
+    /* If the Nucleus POSIX layer is not enabled, then map to NU_ functions */
+    #ifndef CFG_NU_OS_SVCS_POSIX_ENABLE
+        #define SOCK_CONNECT    NU_Connect
+        #define SOCK_SEND(s,b,l,f) NU_Send((s), (CHAR*)(b), (UINT16)(l), (INT16)(f))
+        #define SOCK_RECV(s,b,l,f) NU_Recv((s), (CHAR*)(b), (UINT16)(l), (INT16)(f))
+        #define SOCK_CLOSE      NU_Close_Socket
+        #define ADDRINFO        struct addr_struct
+        #define SOCKADDR        struct addr_struct
+        #define SOCKADDR_IN     struct addr_struct
+        #define SOCK_STREAM     NU_TYPE_STREAM
+    #else
+        #include "sys/types.h"
+        #include "sys/time.h"
+        #include "errno.h"
+        #include "signal.h"
+    #endif /* CFG_NU_OS_SVCS_POSIX_ENABLE */
+    #define NO_SOCK_TIMEOUT
+    #define NO_SOCK_ERROR
+
+    #undef fd_set
+    #undef FD_ZERO
+    #undef FD_SET
+    #undef FD_ISSET
+    #define fd_set              FD_SET
+    #define FD_ZERO(set)        NU_FD_Init(set)
+    #define FD_SET(fd, set)     NU_FD_Set(fd, set)
+    #define FD_ISSET(fd, set)   NU_FD_Check(fd, set)
 
 /* Linux */
 #else
@@ -96,6 +111,7 @@
     #define STDIN   0
 #endif
 
+/* Setup defaults */
 #ifndef SOCKET_T
     #define SOCKET_T        int
 #endif
@@ -105,8 +121,26 @@
 #ifndef SELECT_FD
     #define SELECT_FD(fd)   ((fd) + 1)
 #endif
-#ifndef FD_TYPE
-    #define FD_TYPE         fd_set
+#ifndef ADDRINFO
+    #define ADDRINFO        struct addrinfo
+#endif
+#ifndef SOCKADDR
+    #define SOCKADDR        struct sockaddr
+#endif
+#ifndef SOCKADDR_IN
+    #define SOCKADDR_IN     struct sockaddr_in
+#endif
+#ifndef SOCK_CONNECT
+    #define SOCK_CONNECT    connect
+#endif
+#ifndef SOCK_SEND
+    #define SOCK_SEND(s,b,l,f) send((s), (b), (size_t)(l), (f))
+#endif
+#ifndef SOCK_RECV
+    #define SOCK_RECV(s,b,l,f) recv((s), (b), (size_t)(l), (f))
+#endif
+#ifndef SOCK_CLOSE
+    #define SOCK_CLOSE      close
 #endif
 
 /* Local context for Net callbacks */
@@ -118,7 +152,6 @@ typedef struct _SocketContext {
 } SocketContext;
 
 /* Private functions */
-#ifndef NO_SOCK_TIMEOUT
 static void setup_timeout(struct timeval* tv, int timeout_ms)
 {
     tv->tv_sec = timeout_ms / 1000;
@@ -130,53 +163,93 @@ static void setup_timeout(struct timeval* tv, int timeout_ms)
         tv->tv_usec = 100;
     }
 }
-#endif /* NO_SOCK_TIMEOUT */
 
-static void tcp_set_nonblocking(SOCKET_T* sockfd)
+static int sock_get_addrinfo(SOCKADDR_IN* addr, const char* host, word16 port)
 {
-#ifdef USE_WINDOWS_API
-    unsigned long blocking = 1;
-    int ret = ioctlsocket(*sockfd, FIONBIO, &blocking);
-    if (ret == SOCKET_ERROR)
-        printf("ioctlsocket failed!\n");
-#elif defined(CONFIG_NUCLEUS_OS)
-    int status = NU_Fcntl(*sockfd, NU_SETFLAG, NU_NO_BLOCK);
-    if (status != NU_SUCCESS) {
-        printf("NU_Fcntl set NO_BLOCK failed!\n");
-    }
-#else
-    int flags = fcntl(*sockfd, F_GETFL, 0);
-    if (flags < 0)
-        printf("fcntl get failed!\n");
-    flags = fcntl(*sockfd, F_SETFL, flags | O_NONBLOCK);
-    if (flags < 0)
-        printf("fcntl set failed!\n");
-#endif
-}
-
-static int NetConnect(void *context, const char* host, word16 port,
-    int timeout_ms)
-{
-    SocketContext *sock = (SocketContext*)context;
-    int type = SOCK_STREAM;
-    struct sockaddr_in address;
     int rc;
-    SOERROR_T so_error = 0;
-    struct addrinfo *result = NULL;
-    struct addrinfo hints;
+#if defined(NUCLEUS)
+    NU_HOSTENT *hentry;
+    INT family;
+    CHAR tmp_ip[MAX_ADDRESS_SIZE] = {0};
+#else
+    ADDRINFO *result = NULL;
+    ADDRINFO hints;
+#endif
 
+    XMEMSET(addr, 0, sizeof(ADDRINFO));
+
+#if defined(NUCLEUS)
+    /* Determine the IP address of the foreign server to which to
+     * make the connection.
+     */
+#if (INCLUDE_IPV6 == NU_TRUE)
+    /* Search for a ':' to determine if the address is IPv4 or IPv6. */
+    if (XMEMCHR(host, (int)':', MAX_ADDRESS_SIZE) != NU_NULL) {
+        family = NU_FAMILY_IP6;
+    }
+    else
+#endif
+    {
+#if (INCLUDE_IPV4 == NU_FALSE)
+        /* An IPv6 address was not passed into the routine. */
+        return -1;
+#else
+        family = NU_FAMILY_IP;
+#endif
+    }
+
+    /* Convert the string to an array. */
+    rc = NU_Inet_PTON(family, (char*)host, tmp_ip);
+
+    /* If the URI contains an IP address, copy it into the server structure. */
+    if (rc == NU_SUCCESS) {
+        XMEMCPY(addr->id.is_ip_addrs, tmp_ip, MAX_ADDRESS_SIZE);
+    }
+
+    /* If the application did not pass in an IP address, resolve the host
+     * name into a valid IP address.
+     */
+    else {
+        /* If IPv6 is enabled, default to IPv6.  If the host does not have
+         * an IPv6 address, an IPv4-mapped IPv6 address will be returned that
+         * can be used as an IPv6 address.
+         */
+#if (INCLUDE_IPV6 == NU_TRUE)
+        family = NU_FAMILY_IP6;
+#else
+        family = NU_FAMILY_IP;
+#endif
+
+        /* Try getting host info by name */
+        hentry = NU_Get_IP_Node_By_Name((char*)host, family, DNS_V4MAPPED, &rc);
+        if (hentry) {
+            /* Copy the hentry data into the server structure */
+            memcpy(addr->id.is_ip_addrs, *hentry->h_addr_list, hentry->h_length);
+            family = hentry->h_addrtype;
+
+            /* Free the memory associated with the host entry returned */
+            NU_Free_Host_Entry(hentry);
+        }
+
+        /* If the host name could not be resolved, return an error. */
+        else {
+            return -1;
+        }
+    }
+
+    addr->family = family;
+    addr->port = port;
+
+#else
     XMEMSET(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
-    
-    XMEMSET(&address, 0, sizeof(address));
-    address.sin_family = AF_INET;
 
     /* Get address information for host and locate IPv4 */
     rc = getaddrinfo(host, NULL, &hints, &result);
     if (rc >= 0 && result != NULL) {
-        struct addrinfo* res = result;
+        ADDRINFO* res = result;
 
         /* prefer ip4 addresses */
         while (res) {
@@ -188,10 +261,10 @@ static int NetConnect(void *context, const char* host, word16 port,
         }
 
         if (result->ai_family == AF_INET) {
-            address.sin_port = htons(port);
-            address.sin_family = AF_INET;
-            address.sin_addr =
-                ((struct sockaddr_in*)(result->ai_addr))->sin_addr;
+            addr->sin_port = htons(port);
+            addr->sin_family = AF_INET;
+            addr->sin_addr =
+                ((SOCKADDR_IN*)(result->ai_addr))->sin_addr;
         }
         else {
             rc = -1;
@@ -199,49 +272,140 @@ static int NetConnect(void *context, const char* host, word16 port,
 
         freeaddrinfo(result);
     }
+#endif /* NUCLEUS */
+    return rc;
+}
 
+static void sock_set_nonblocking(SOCKET_T* sockfd)
+{
+    int rc;
+#ifdef USE_WINDOWS_API
+    unsigned long blocking = 1;
+    rc = ioctlsocket(*sockfd, FIONBIO, &blocking);
+    if (rc == SOCKET_ERROR)
+        printf("ioctlsocket failed!\n");
+#elif defined(NUCLEUS)
+    rc = NU_Fcntl(*sockfd, NU_SETFLAG, NU_NO_BLOCK);
+    if (rc != NU_SUCCESS) {
+        printf("NU_Fcntl set NO_BLOCK failed!\n");
+    }
+#else
+    rc = fcntl(*sockfd, F_GETFL, 0);
+    if (rc < 0)
+        printf("fcntl get failed!\n");
+    rc = fcntl(*sockfd, F_SETFL, rc | O_NONBLOCK);
+    if (rc < 0)
+        printf("fcntl set failed!\n");
+#endif
+}
+
+static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
+        fd_set *exceptfds, struct timeval *timeout)
+{
+    int rc;
+#if defined(NUCLEUS)
+    UNSIGNED nu_timeout;
+
+    if (timeout) {
+        nu_timeout = (timeout->tv_sec * NU_PLUS_TICKS_PER_SEC) +
+                ((timeout->tv_usec * NU_PLUS_TICKS_PER_SEC) / 1000000);
+    } else {
+        nu_timeout = NU_SUSPEND;
+    }
+
+    rc = NU_Select(nfds, readfds, writefds, exceptfds, nu_timeout);
+
+    /* On failure, clear all the descriptor sets to make the behavior
+     * consistent with the *NIX implementation. */
+    if (rc != NU_SUCCESS) {
+        if (readfds) {
+            FD_ZERO(readfds);
+        }
+        if (writefds) {
+            FD_ZERO(writefds);
+        }
+        if (exceptfds) {
+            FD_ZERO(exceptfds);
+        }
+
+        /* If the error is due to no sockets being specified, then sleep
+         * for the specified duration to be consistent with the *NIX
+         * implementation. */
+        if (rc == NU_NO_SOCKETS) {
+            if (nu_timeout != 0) {
+                NU_Sleep(nu_timeout);
+            }
+            rc = 0;
+        }
+    }
+#else
+    /* Wait for connect */
+    rc = select(nfds, readfds, writefds, exceptfds, timeout);
+    if (rc > 0) {
+        SOERROR_T so_error = 0;
+        socklen_t len = sizeof(so_error);
+
+        /* Check for error */
+        getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        /* Return error if one was found */
+        rc = (so_error == 0) ? 0 : (int)so_error;
+    }
+#endif /* NUCLEUS */
+    return rc;
+}
+
+static int sock_create(SOCKADDR_IN* addr, int type, int protocol)
+{
+    int rc;
+#if defined(NUCLEUS)
+    rc = NU_Socket(addr->family, type, protocol);
+#else
+    rc = socket(addr->sin_family, type, protocol);
+#endif
+    return rc;
+}
+
+static int NetConnect(void *context, const char* host, word16 port,
+    int timeout_ms)
+{
+    SocketContext *sock = (SocketContext*)context;
+    SOCKADDR_IN address;
+    int rc;
+
+    rc = sock_get_addrinfo(&address, host, port);
     if (rc == 0) {
         /* Default to error */
         rc = -1;
 
         /* Create socket */
-        sock->fd = socket(address.sin_family, type, 0);
-        if (sock->fd != -1) {
-            FD_TYPE fdset;
-
-#ifndef NO_SOCK_TIMEOUT
-            /* Setup timeout */
+        rc = sock_create(&address, SOCK_STREAM, 0);
+        if (rc != -1) {
+            fd_set fdset;
             struct timeval tv;
+
+            sock->fd = rc;
+
+            /* Setup timeout */
             setup_timeout(&tv, timeout_ms);
-#endif
 
             /* Setup FD's */
             FD_ZERO(&fdset);
             FD_SET(sock->fd, &fdset);
 
             /* Set socket as non-blocking */
-            tcp_set_nonblocking(&sock->fd);
+            sock_set_nonblocking(&sock->fd);
 
             /* Start connect */
-            connect(sock->fd, (struct sockaddr*)&address, sizeof(address));
+            SOCK_CONNECT(sock->fd, (SOCKADDR*)&address, sizeof(address));
 
             /* Wait for connect */
-            if (select((int)SELECT_FD(sock->fd), NULL, &fdset, NULL, &tv) > 0)
-            {
-                socklen_t len = sizeof(so_error);
-
-                /* Check for error */
-                getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-                if (so_error == 0) {
-                    rc = 0; /* Success */
-                }
-            }
+            rc = sock_select((int)SELECT_FD(sock->fd), NULL, &fdset, NULL, &tv);
         }
     }
 
     /* Show error */
     if (rc != 0) {
-        printf("MqttSocket_Connect: Rc=%d, SoErr=%d\n", rc, so_error);
+        printf("MqttSocket_Connect: Rc=%d\n", rc);
     }
 
     return rc;
@@ -252,24 +416,23 @@ static int NetWrite(void *context, const byte* buf, int buf_len,
 {
     SocketContext *sock = (SocketContext*)context;
     int rc;
-    SOERROR_T so_error = 0;
-#ifndef NO_SOCK_TIMEOUT
     struct timeval tv;
-#endif
 
     if (context == NULL || buf == NULL || buf_len <= 0) {
         return MQTT_CODE_ERROR_BAD_ARG;
     }
 
-#ifndef NO_SOCK_TIMEOUT
     /* Setup timeout */
     setup_timeout(&tv, timeout_ms);
+#ifndef NO_SOCK_TIMEOUT
     setsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(tv));
 #endif
 
-    rc = (int)send(sock->fd, buf, (size_t)buf_len, 0);
+    rc = (int)SOCK_SEND(sock->fd, buf, buf_len, 0);
     if (rc == -1) {
+#ifndef NO_SOCK_ERROR
         /* Get error */
+        SOERROR_T so_error = 0;
         socklen_t len = sizeof(so_error);
         getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
         if (so_error == 0) {
@@ -278,6 +441,7 @@ static int NetWrite(void *context, const byte* buf, int buf_len,
         else {
             printf("MqttSocket_NetWrite: Error %d\n", so_error);
         }
+#endif
     }
 
     return rc;
@@ -288,20 +452,15 @@ static int NetRead(void *context, byte* buf, int buf_len,
 {
     SocketContext *sock = (SocketContext*)context;
     int rc = -1, bytes = 0;
-    SOERROR_T so_error = 0;
-    FD_TYPE recvfds, errfds;
-#ifndef NO_SOCK_TIMEOUT
+    fd_set recvfds, errfds;
     struct timeval tv;
-#endif
 
     if (context == NULL || buf == NULL || buf_len <= 0) {
         return MQTT_CODE_ERROR_BAD_ARG;
     }
 
     /* Setup timeout and FD's */
-#ifndef NO_SOCK_TIMEOUT
     setup_timeout(&tv, timeout_ms);
-#endif
     FD_ZERO(&recvfds);
     FD_SET(sock->fd, &recvfds);
     FD_ZERO(&errfds);
@@ -316,13 +475,13 @@ static int NetRead(void *context, byte* buf, int buf_len,
     while (bytes < buf_len)
     {
         /* Wait for rx data to be available */
-        rc = select((int)SELECT_FD(sock->fd), &recvfds, NULL, &errfds, &tv);
+        rc = sock_select((int)SELECT_FD(sock->fd), &recvfds, NULL, &errfds, &tv);
         if (rc > 0) {
             /* Check if rx or error */
             if (FD_ISSET(sock->fd, &recvfds)) {
                 /* Try and read number of buf_len provided,
                     minus what's already been read */
-                rc = (int)recv(sock->fd,
+                rc = (int)SOCK_RECV(sock->fd,
                                &buf[bytes],
                                (size_t)(buf_len - bytes),
                                0);
@@ -352,7 +511,9 @@ static int NetRead(void *context, byte* buf, int buf_len,
     }
 
     if (rc < 0) {
+#ifndef NO_SOCK_ERROR
         /* Get error */
+        SOERROR_T so_error = 0;
         socklen_t len = sizeof(so_error);
         getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
         if (so_error == 0 && !FD_ISSET(sock->fd, &recvfds)) {
@@ -361,6 +522,7 @@ static int NetRead(void *context, byte* buf, int buf_len,
         else {
             printf("MqttSocket_NetRead: Error %d\n", so_error);
         }
+#endif
     }
     else {
         rc = bytes;
@@ -374,13 +536,7 @@ static int NetDisconnect(void *context)
     SocketContext *sock = (SocketContext*)context;
     if (sock) {
         if (sock->fd != -1) {
-#if defined(USE_WINDOWS_API)
-            closesocket(sock->fd);
-#elif defined(CONFIG_NUCLEUS_OS)
-            NU_Close_Socket(sock->fd);
-#else
-            close(sock->fd);
-#endif
+            SOCK_CLOSE(sock->fd);
             sock->fd = -1;
         }
     }
@@ -423,8 +579,8 @@ int MqttClientNet_CheckForCommand(MqttNet* net, byte* buffer, word32 length)
 {
     int stdin_has_data = 0;
     if (net && net->context) {
-        SocketContext *sock = (SocketContext*)net->context;
 #ifdef ENABLE_STDIN_CAPTURE
+        SocketContext *sock = (SocketContext*)net->context;
         stdin_has_data = sock->stdin_has_data;
 #endif
     }
