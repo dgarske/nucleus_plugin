@@ -1,5 +1,5 @@
 export SYSTEM_DIR=../../../../nucleus
-export USER_CONFIG=samples/networking/mqtt_client/mqttclient.config
+export USER_CONFIG=samples/networking/mqtt_client/mqtt_client.config
 
 all: 
 	$(MAKE) -C "$(SYSTEM_DIR)" distclean

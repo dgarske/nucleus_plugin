@@ -143,6 +143,7 @@
     #define SOCK_CLOSE      close
 #endif
 
+
 /* Local context for Net callbacks */
 typedef struct _SocketContext {
     SOCKET_T fd;
@@ -312,6 +313,12 @@ static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
     } else {
         nu_timeout = NU_SUSPEND;
     }
+    
+    /* Exception FD's are not used on Nucleus */
+    if (exceptfds) {
+        FD_ZERO(exceptfds);
+        exceptfds = NULL;
+    }
 
     rc = NU_Select(nfds, readfds, writefds, exceptfds, nu_timeout);
 
@@ -324,9 +331,6 @@ static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
         if (writefds) {
             FD_ZERO(writefds);
         }
-        if (exceptfds) {
-            FD_ZERO(exceptfds);
-        }
 
         /* If the error is due to no sockets being specified, then sleep
          * for the specified duration to be consistent with the *NIX
@@ -337,6 +341,9 @@ static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
             }
             rc = 0;
         }
+    }
+    else {
+    	rc = 1; /* For compatibility return 1 on success */
     }
 #else
     /* Wait for connect */
@@ -396,10 +403,14 @@ static int NetConnect(void *context, const char* host, word16 port,
             sock_set_nonblocking(&sock->fd);
 
             /* Start connect */
-            SOCK_CONNECT(sock->fd, (SOCKADDR*)&address, sizeof(address));
+            rc = SOCK_CONNECT(sock->fd, (SOCKADDR*)&address, sizeof(address));
+            /* TODO: Check rc value for connecting / non-blocking here */
 
             /* Wait for connect */
             rc = sock_select((int)SELECT_FD(sock->fd), NULL, &fdset, NULL, &tv);
+            if (rc > 0) {
+            	rc = 0;
+            }
         }
     }
 
