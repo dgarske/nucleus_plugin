@@ -177,7 +177,7 @@ static int sock_get_addrinfo(SOCKADDR_IN* addr, const char* host, word16 port)
     ADDRINFO hints;
 #endif
 
-    XMEMSET(addr, 0, sizeof(ADDRINFO));
+    XMEMSET(addr, 0, sizeof(SOCKADDR_IN));
 
 #if defined(NUCLEUS)
     /* Determine the IP address of the foreign server to which to
@@ -346,17 +346,7 @@ static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
     	rc = 1; /* For compatibility return 1 on success */
     }
 #else
-    /* Wait for connect */
     rc = select(nfds, readfds, writefds, exceptfds, timeout);
-    if (rc > 0) {
-        SOERROR_T so_error = 0;
-        socklen_t len = sizeof(so_error);
-
-        /* Check for error */
-        getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-        /* Return error if one was found */
-        rc = (so_error == 0) ? 0 : (int)so_error;
-    }
 #endif /* NUCLEUS */
     return rc;
 }
@@ -390,6 +380,7 @@ static int NetConnect(void *context, const char* host, word16 port,
             fd_set fdset;
             struct timeval tv;
 
+            /* Store new socket file descriptor */
             sock->fd = rc;
 
             /* Setup timeout */
@@ -409,7 +400,17 @@ static int NetConnect(void *context, const char* host, word16 port,
             /* Wait for connect */
             rc = sock_select((int)SELECT_FD(sock->fd), NULL, &fdset, NULL, &tv);
             if (rc > 0) {
+        #ifndef NO_SOCK_ERROR
+                SOERROR_T so_error = 0;
+                socklen_t len = sizeof(so_error);
+
+                /* Check for error */
+                getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+                /* Return error if one was found */
+                rc = (so_error == 0) ? 0 : (int)so_error;
+        #else
             	rc = 0;
+        #endif /* NO_SOCK_ERROR */
             }
         }
     }

@@ -290,6 +290,7 @@ int mqttclient_test(void* args)
             case '?' :
                 Usage();
                 exit(EXIT_SUCCESS);
+
             case 'h' :
                 host = myoptarg;
                 break;
