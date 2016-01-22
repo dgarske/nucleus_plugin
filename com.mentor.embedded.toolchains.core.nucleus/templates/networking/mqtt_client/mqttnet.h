@@ -26,10 +26,6 @@
     extern "C" {
 #endif
 
-#ifdef CONFIG_NUCLEUS_OS
-    #define NO_MAIN_DRIVER
-#endif
-
 /* Default MQTT host broker to use, when none is specified in the examples */
 #define DEFAULT_MQTT_HOST       "iot.eclipse.org" /* broker.hivemq.com */
 

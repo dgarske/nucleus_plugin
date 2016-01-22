@@ -33,6 +33,16 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef NUCLEUS
+    #define NO_MAIN_DRIVER
+	#define NO_EXIT
+#endif
+
+#ifdef NO_EXIT
+	#undef exit
+	#define exit(rc) return rc
+#endif
+
 /* Configuration */
 #define DEFAULT_CMD_TIMEOUT_MS  30000
 #define DEFAULT_CON_TIMEOUT_MS  5000
@@ -149,12 +159,14 @@ static int mygetopt(int argc, char** argv, const char* optstring)
     return c;
 }
 
-static void err_sys(const char* msg)
+static int err_sys(const char* msg)
 {
-    printf("wolfMQTT error: %s\n", msg);
+	int rc = 0;
     if (msg) {
-        exit(EXIT_FAILURE);
+    	printf("wolfMQTT error: %s\n", msg);
+    	exit(EXIT_FAILURE);
     }
+    return rc;
 }
 
 #define MAX_PACKET_ID   ((1 << 16) - 1)
@@ -278,7 +290,6 @@ void* mqttclient_test(void* args)
             case '?' :
                 Usage();
                 exit(EXIT_SUCCESS);
-
             case 'h' :
                 host = myoptarg;
                 break;
@@ -286,7 +297,7 @@ void* mqttclient_test(void* args)
             case 'p' :
                 port = (word16)XATOI(myoptarg);
                 if (port == 0) {
-                    err_sys("Invalid Port Number!");
+                    return err_sys("Invalid Port Number!");
                 }
                 break;
 
@@ -301,7 +312,7 @@ void* mqttclient_test(void* args)
             case 'q' :
                 qos = (MqttQoS)((byte)XATOI(myoptarg));
                 if (qos > MQTT_QOS_2) {
-                    err_sys("Invalid QoS value!");
+                	return err_sys("Invalid QoS value!");
                 }
                 break;
 
