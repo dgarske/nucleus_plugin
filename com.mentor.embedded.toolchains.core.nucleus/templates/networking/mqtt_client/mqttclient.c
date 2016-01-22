@@ -262,7 +262,7 @@ static int mqttclient_message_cb(MqttClient *client, MqttMessage *msg,
     return MQTT_CODE_SUCCESS;
 }
 
-void* mqttclient_test(void* args)
+int mqttclient_test(void* args)
 {
     int rc;
     MqttClient client;
