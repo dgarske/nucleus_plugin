@@ -1,7 +1,10 @@
 /* Include files */
 #include "nucleus.h"
 #include "networking/nu_networking.h"
+
+#include <wolfmqtt/mqtt_client.h>
 #include "mqttclient.h"
+#include "mqttexample.h"
 
 /* Macros */
 #define TASK_STACK_SIZE        4096
@@ -14,13 +17,6 @@ static  NU_TASK Mqtt_Client_CB;
 
 /* Function prototypes */
 static  VOID   Mqtt_Client_Task(UNSIGNED argc, VOID *argv);
-
-/* Argument Parsing */
-typedef struct func_args {
-    int    argc;
-    char** argv;
-    int    return_code;
-} func_args;
 
 
 /*************************************************************************
@@ -116,13 +112,21 @@ static VOID Mqtt_Client_Task(UNSIGNED argc, VOID *argv)
 {
     STATUS              status;
 
+    /* Unused arguments */
+    (VOID)argc;
+    (VOID)argv;
+
     /* Wait until the NET stack is initialized. */
     status = NETBOOT_Wait_For_Network_Up(NU_SUSPEND);
     if (status == NU_SUCCESS)
     {
         func_args args;
-        args.argc = argc;
-        args.argv = (char**)argv;
+        const char* myargv[] = {
+        		"mqttclient",
+        		"-t", /* Use TLS */
+        };
+        args.argc = sizeof(myargv)/sizeof(const char*);
+        args.argv = (char**)myargv;
         mqttclient_test(&args);
     }
     else

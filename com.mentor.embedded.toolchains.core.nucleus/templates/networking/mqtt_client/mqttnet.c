@@ -27,11 +27,6 @@
 #include <wolfmqtt/mqtt_client.h>
 #include "mqttnet.h"
 
-/* Standard includes. */
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-
 /* FreeRTOS and LWIP */
 #ifdef FREERTOS
     /* Scheduler includes. */
@@ -59,7 +54,7 @@
 
 /* Nucleus */
 #elif defined(NUCLEUS)
-	#include "nucleus.h"
+    #include "nucleus.h"
     #include "networking/nu_networking.h"
 
     /* If the Nucleus POSIX layer is not enabled, then map to NU_ functions */
@@ -143,12 +138,15 @@
     #define SOCK_CLOSE      close
 #endif
 
+/* Include the example code */
+#include "mqttexample.h"
 
 /* Local context for Net callbacks */
 typedef struct _SocketContext {
     SOCKET_T fd;
 #ifdef ENABLE_STDIN_CAPTURE
-    int stdin_has_data;
+    byte stdin_cap_enable;
+    byte stdin_has_data;
 #endif
 } SocketContext;
 
@@ -284,19 +282,19 @@ static void sock_set_nonblocking(SOCKET_T* sockfd)
     unsigned long blocking = 1;
     rc = ioctlsocket(*sockfd, FIONBIO, &blocking);
     if (rc == SOCKET_ERROR)
-        printf("ioctlsocket failed!\n");
+        PRINTF("ioctlsocket failed!");
 #elif defined(NUCLEUS)
     rc = NU_Fcntl(*sockfd, NU_SETFLAG, NU_NO_BLOCK);
     if (rc != NU_SUCCESS) {
-        printf("NU_Fcntl set NO_BLOCK failed!\n");
+        PRINTF("NU_Fcntl set NO_BLOCK failed!");
     }
 #else
     rc = fcntl(*sockfd, F_GETFL, 0);
     if (rc < 0)
-        printf("fcntl get failed!\n");
+        PRINTF("fcntl get failed!");
     rc = fcntl(*sockfd, F_SETFL, rc | O_NONBLOCK);
     if (rc < 0)
-        printf("fcntl set failed!\n");
+        PRINTF("fcntl set failed!");
 #endif
 }
 
@@ -343,7 +341,7 @@ static int sock_select(int nfds, fd_set *readfds, fd_set *writefds,
         }
     }
     else {
-    	rc = 1; /* For compatibility return 1 on success */
+        rc = 1; /* For compatibility return 1 on success */
     }
 #else
     rc = select(nfds, readfds, writefds, exceptfds, timeout);
@@ -409,7 +407,7 @@ static int NetConnect(void *context, const char* host, word16 port,
                 /* Return error if one was found */
                 rc = (so_error == 0) ? 0 : (int)so_error;
         #else
-            	rc = 0;
+                rc = 0;
         #endif /* NO_SOCK_ERROR */
             }
         }
@@ -417,7 +415,7 @@ static int NetConnect(void *context, const char* host, word16 port,
 
     /* Show error */
     if (rc != 0) {
-        printf("MqttSocket_Connect: Rc=%d\n", rc);
+        PRINTF("MqttSocket_Connect: Rc=%d", rc);
     }
 
     return rc;
@@ -451,7 +449,7 @@ static int NetWrite(void *context, const byte* buf, int buf_len,
             rc = 0; /* Handle signal */
         }
         else {
-            printf("MqttSocket_NetWrite: Error %d\n", so_error);
+            PRINTF("MqttSocket_NetWrite: Error %d", so_error);
         }
 #endif
     }
@@ -506,10 +504,13 @@ static int NetRead(void *context, byte* buf, int buf_len,
                 }
             }
 #ifdef ENABLE_STDIN_CAPTURE
-            if (FD_ISSET(STDIN, &recvfds)) {
+            else if (FD_ISSET(STDIN, &recvfds)) {
                 sock->stdin_has_data = 1;
-                rc = 0;
-                break;
+                /* Don't exit read until cap enabled */
+                if (sock->stdin_cap_enable) {
+                    rc = 0;
+                    break;
+                }
             }
 #endif
             if (FD_ISSET(sock->fd, &errfds)) {
@@ -532,7 +533,7 @@ static int NetRead(void *context, byte* buf, int buf_len,
             rc = 0; /* Handle signal */
         }
         else {
-            printf("MqttSocket_NetRead: Error %d\n", so_error);
+            PRINTF("MqttSocket_NetRead: Error %d", so_error);
         }
 #endif
     }
@@ -593,10 +594,11 @@ int MqttClientNet_CheckForCommand(MqttNet* net, byte* buffer, word32 length)
     if (net && net->context) {
 #ifdef ENABLE_STDIN_CAPTURE
         SocketContext *sock = (SocketContext*)net->context;
+        sock->stdin_cap_enable = 1;
         stdin_has_data = sock->stdin_has_data;
 #endif
     }
-    
+
     if (stdin_has_data) {
 #ifdef ENABLE_STDIN_CAPTURE
         stdin_has_data = 0;
