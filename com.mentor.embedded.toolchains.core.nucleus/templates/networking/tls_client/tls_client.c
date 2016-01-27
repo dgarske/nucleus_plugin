@@ -10,7 +10,6 @@
 #define PORT_NUM              443          /* Port number for client. */
 #define HOST_STR              "localhost"
 #define BUF_SIZE              1024         /* Size of input buffer. */
-#define FMT_SIZE              24           /* Size of format string. */
 #define STATUS_FAILURE        -1           /* The operation failed. */
 
 /* Macros */
@@ -18,7 +17,7 @@
 #define TASK_PRIORITY          31
 #define TASK_TIMESLICE         0
 
-static const CHAR* kTestString = "Hello World";
+static const CHAR* kTestString = "TLS Test Message";
 
 
 /* Internal globals */
@@ -86,156 +85,80 @@ VOID Application_Initialize (NU_MEMORY_POOL* mem_pool,
     }
 }
 
-static VOID GetAddressInfo(void)
+static STATUS GetAddressInfo(const CHAR* host, UINT16 port, struct addr_struct* addr)
 {
-    STATUS      status = NU_SUCCESS;
-    struct      addr_struct server;
-    CHAR        ip_address[MAX_ADDRESS_SIZE] = {0};
-    NU_HOSTENT  *hentry = NU_NULL;
-    INT         socket, new_socket;
-#if (HTTP_INCLUDE_CYASSL == NU_TRUE)
-    UINT8       is_secured = NU_FALSE;
-#endif /* (HTTP_INCLUDE_CYASSL == NU_TRUE) */
-    CHAR        rmtsvr_name[] = "rmtsvr";
+    STATUS status;
+    NU_HOSTENT *hentry;
+    INT family;
+    CHAR test_ip[MAX_ADDRESS_SIZE] = {0};
 
-    /* Check if the port is specified by the user */
-    if (port != 0)
-    {
-        /* Assign specified port number. */
-        server.port = port;
-    }
+    XMEMSET(addr, 0, sizeof(struct addr_struct));
 
-#if (HTTP_INCLUDE_CYASSL == NU_TRUE)
-    /* RFC-2616
-     *  Comparisons of scheme names MUST be case-insensitive */
-    if ((session->ssl_struct) &&
-        (scheme_length == (sizeof(HTTP_SECURE) - 1)) &&
-        (0 == UTIL_Strnicmp(scheme, HTTP_SECURE, scheme_length)))
-    {
-        /* This is a secured connection. */
-        is_secured = NU_TRUE;
-
-        /* Check if the port number is not specified by the user. */
-        if (port == 0)
-        {
-            /* Assign default port for secure connection, will be changed
-             * latter if specified in URI.  */
-            server.port = HTTP_SSL_PORT;
-        }
-    }
-    else
-#endif /* (HTTP_INCLUDE_CYASSL == NU_TRUE) */
-    if ((scheme_length == (sizeof(HTTP_UNSECURE) - 1)) &&
-        (0 == UTIL_Strnicmp(scheme, HTTP_UNSECURE, scheme_length)))
-    {
-        /* Check if the port number is not specified by the user. */
-        if (port == 0)
-        {
-            /* Assign default port for HTTP connection, will be changed
-             * latter if specified in URI.  */
-            server.port = HTTP_SVR_PORT;
-        }
-    }
-
-    /* Unknown scheme is given. */
-    else
-    {
-        /* Return error to caller. */
-        status = HTTP_INVALID_URI;
-    }
-
-    /* If connection type was successfully identified. */
-    if (status == NU_SUCCESS)
-    {
-        /* Assign server name. */
-        server.name = rmtsvr_name;
-
-        /* Check if the user has provided a host name. */
-        if (uri_flag & UTIL_URI_HOST_IS_NAME)
-        {
-            /* If IPv6 is enabled, default to IPv6.  If the host does not have
-             * an IPv6 address, an IPv4-mapped IPv6 address will be returned that
-             * can be used as an IPv6 address.
-             */
+    /* Determine the IP address of the foreign server to which to
+     * make the connection.
+     */
 #if (INCLUDE_IPV6 == NU_TRUE)
-            server.family = NU_FAMILY_IP6;
+    /* Search for a ':' to determine if the address is IPv4 or IPv6. */
+    if (XMEMCHR(ip, (int)':', MAX_ADDRESS_SIZE) != NU_NULL) {
+        family = NU_FAMILY_IP6;
+    }
+    else
+#endif
+    {
+#if (INCLUDE_IPV4 == NU_FALSE)
+        /* An IPv6 address was not passed into the routine. */
+        return -1;
 #else
-            server.family = NU_FAMILY_IP;
-#endif /* (INCLUDE_IPV6 == NU_TRUE) */
-            /* Try to resolve given host name. */
-            hentry = NU_Get_IP_Node_By_Name(host, server.family, DNS_V4MAPPED, &status);
+        family = NU_FAMILY_IP;
+#endif
+    }
 
-            if (hentry)
-            {
-                /* Copy the hentry data into the server structure */
-                memcpy(&server.id.is_ip_addrs, *hentry->h_addr_list,
-                       hentry->h_length);
-                server.family = hentry->h_addrtype;
+    /* Convert the string to an array. */
+    status = NU_Inet_PTON(family, (char*)host, test_ip);
 
-                /* Free the memory associated with the host entry returned */
-                NU_Free_Host_Entry(hentry);
-            }
+    /* If the URI contains an IP address, copy it into the server structure. */
+    if (status == NU_SUCCESS) {
+        XMEMCPY(addr->id.is_ip_addrs, test_ip, MAX_ADDRESS_SIZE);
+    }
 
-            /* Host name could not be resolved. */
-            else
-            {
-                /* Return error to caller */
-                status = HTTP_NO_IP_NODE;
-            }
-        }
-
-        else
-        {
+    /* If the application did not pass in an IP address, resolve the host
+     * name into a valid IP address.
+     */
+    else {
+        /* If IPv6 is enabled, default to IPv6.  If the host does not have
+         * an IPv6 address, an IPv4-mapped IPv6 address will be returned that
+         * can be used as an IPv6 address.
+         */
 #if (INCLUDE_IPV6 == NU_TRUE)
-            /* Check if given address is an IPv6 address. */
-            if (uri_flag & UTIL_URI_HOST_IS_IPV6)
-            {
-                /* This is an IPv6 address. */
-                server.family = NU_FAMILY_IP6;
+        family = NU_FAMILY_IP6;
+#else
+        family = NU_FAMILY_IP;
+#endif
 
-                /* Convert this address to an IPv6 address. */
-                status = NU_Inet_PTON(NU_FAMILY_IP6, host, ip_address);
-            }
-            else
-#endif /* (INCLUDE_IPV6 == NU_TRUE) */
-#if (INCLUDE_IPV4 == NU_TRUE)
-            /* Check if given address is an IPv4 address. */
-            if (uri_flag & UTIL_URI_HOST_IS_IPV4)
-            {
-                /* This is an IPv4 address. */
-                server.family = NU_FAMILY_IP;
+        /* Try getting host info by name */
+        hentry = NU_Get_IP_Node_By_Name((char*)host, family, DNS_V4MAPPED, &status);
+        if (hentry) {
+            /* Copy the hentry data into the server structure */
+            XMEMCPY(addr->id.is_ip_addrs, *hentry->h_addr_list, hentry->h_length);
+            family = hentry->h_addrtype;
 
-                /* Convert this address to an IPv4 address. */
-                status = NU_Inet_PTON(NU_FAMILY_IP, host, ip_address);
-            }
-#endif /*  (INCLUDE_IPV4 == NU_TRUE) */
+            /* Free the memory associated with the host entry returned */
+            NU_Free_Host_Entry(hentry);
+        }
 
-            /* Check if an IP address was successfully parsed. */
-            if (status == NU_SUCCESS)
-            {
-                /* Copy given address to our server address structure. */
-                memcpy(&server.id.is_ip_addrs, ip_address, MAX_ADDRESS_SIZE);
-            }
+        /* If the host name could not be resolved, return an error. */
+        else {
+            return -1;
         }
     }
 
-    if (status == NU_SUCCESS)
-    {
-        /* Initialize a socket identifier. */
-        socket = NU_Socket(server.family, NU_TYPE_STREAM, 0);
+    /* Set the family field. */
+    addr->family = family;
 
-        /* Check if socket was successfully created. */
-        if (socket < 0)
-        {
-            /* Return error to caller. */
-            status = socket;
-        }
-    }
+    /* Set the port field. */
+    addr->port = port;
 
-    if (status == NU_SUCCESS)
-    {
-        /* Connect to host. */
-        new_socket = NU_Connect(socket, &server, (INT16)sizeof(server));
+    return status;
 }
 
 
@@ -275,11 +198,10 @@ static VOID Tls_Client_Sample(UNSIGNED argc, VOID *argv)
 {
     STATUS              status;
     INT                 socket, newsock;    /* Socket descriptors */
-    struct addr_struct  servaddr;            /* Server address structure */
-    struct addr_struct  client_addr;
+    struct addr_struct  addr;           /* Address structure */
     WOLFSSL_CTX* ctx;
     WOLFSSL* ssl;
-    CHAR* respBuf[100];
+    CHAR* buffer[BUF_SIZE];
 
     /* Reference unused parameters to avoid toolset warnings. */
     UNUSED_PARAMETER(argc);
@@ -297,45 +219,49 @@ static VOID Tls_Client_Sample(UNSIGNED argc, VOID *argv)
         if (socket >= 0)
         {
             /* Lookup host */
-
-            /* Connect to host. */
-            newsock = NU_Connect(socket, &server, (INT16)sizeof(server));
-            if (newsock == socket) 
+            status = GetAddressInfo(HOST_STR, PORT_NUM, &addr);
+            if (status == NU_SUCCESS)
             {
-                /* Create wolfSSL context */
-                ctx = wolfSSL_CTX_new(wolfTLSv1_2_client_method());
-                if (ctx) {
-                    /* Set verify none */
-                    wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
+                /* Connect to host. */
+                newsock = NU_Connect(socket, &addr, (INT16)sizeof(addr));
+                if (newsock == socket)
+                {
+                    /* Create wolfSSL context */
+                    ctx = wolfSSL_CTX_new(wolfTLSv1_2_client_method());
+                    if (ctx) {
+                        /* Set verify none */
+                        wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
 
-                    /* TODO: Use this to load certificate to verify TLS session */
-                    //void CYASSL_load_buffer(SSL_CTX* ctx, const char** fname, int type,int size)
+                        /* TODO: Use this to load certificate to verify TLS session */
+                        //void CYASSL_load_buffer(SSL_CTX* ctx, const char** fname, int type,int size)
 
-                    /* Create new SSL object */
-                    ssl = wolfSSL_new(ctx);
-                    if (ssl) {
-                        wolfSSL_set_fd(ssl, socket);
+                        /* Create new SSL object */
+                        ssl = wolfSSL_new(ctx);
+                        if (ssl) {
+                            wolfSSL_set_fd(ssl, socket);
                 
-                        status = wolfSSL_connect(client->tls.ssl);
-                        if (status == SSL_SUCCESS) {
+                            status = wolfSSL_connect(ssl);
+                            if (status == SSL_SUCCESS) {
                     
-                            /* Send test */
-                            wolfSSL_write(ssl, kTestString, strlen(kTestString));
+                                /* Send test */
+                                status = wolfSSL_write(ssl, kTestString, strlen(kTestString));
+                                printf("TLS Client: Write %d\r\n", status);
 
-                            /* Read response */
-                            wolfSSL_read(ssl, respBuf, sizeof(respBuf));
-                            
-                            /* Verify echo response */
-                            if (memcmp(kTestString, respBuf, strlen(kTestString)) == 0) {
-                                printf("TLS Client: Server Response Validated\n");
+                                /* Read response */
+                                status = wolfSSL_read(ssl, buffer, sizeof(buffer));
+                                printf("TLS Client: Read %d\r\n", status);
+
+                                if (status == strlen(kTestString)) {
+									/* Verify echo response */
+									if (memcmp(kTestString, buffer, strlen(kTestString)) == 0) {
+										printf("TLS Client: Server Response Validated\r\n");
+									}
+                                }
                             }
-                                
-                            /* Disconnect */
-
+                            wolfSSL_free(ssl);
                         }
-                        wolfSSL_free(ssl);
+                        wolfSSL_CTX_free(ctx);
                     }
-                    wolfSSL_CTX_free(ctx);
                 }
             }
 

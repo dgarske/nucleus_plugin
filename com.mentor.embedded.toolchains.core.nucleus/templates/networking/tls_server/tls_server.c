@@ -2,48 +2,28 @@
 #include "nucleus.h"
 #include "networking/nu_networking.h"
 
+/* SSL Lite */
+#include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/error-crypt.h>
 
 /* Defines */
-#define  PORT_NUM              8080         /* Port number for server. */
+#define  PORT_NUM              443          /* Port number for server. */
 #define  BUF_SIZE              1024         /* Size of input buffer. */
-#define  FMT_SIZE              24           /* Size of format string. */
 #define  STATUS_FAILURE        -1           /* The operation failed. */
-
 
 /* Macros */
 #define TASK_STACK_SIZE        4096
 #define TASK_PRIORITY          31
 #define TASK_TIMESLICE         0
 
-/* This is the format for a positive response that does
-   contain the foreign hostname. */
-CHAR Positive_Response1[] = "HTTP/1.0 200 OK\r\nContent-Type:text/html\r\n\r\n"
-                            "My IP Address is: <FONT COLOR=\"#3366BB\">%s</FONT>, "
-                            "Your IP Address is: <FONT COLOR=\"#3366BB\">%s</FONT>, "
-                            "Your Hostname is: <FONT COLOR=\"#3366BB\">%s</FONT>";
-
-/* This is the format for a positive response that does not
-   contain the foreign hostname. */
-CHAR Positive_Response2[] = "HTTP/1.0 200 OK\r\nContent-Type:text/html\r\n\r\n"
-                            "My IP Address is: <FONT COLOR=\"#3366BB\">%s</FONT>, "
-                            "Your IP Address is: <FONT COLOR=\"#3366BB\">%s</FONT>";
-
-/* This is the format for a negative response. */
-CHAR Negative_Response[]  = "HTTP/1.0 404 Not Found\r\nContent-Type:text/html\r\n\r\n";
-
 
 /* Internal globals */
-static  NU_TASK Simple_Server_CB;
+static  NU_TASK Tls_Server_CB;
 
 
 /* Function prototypes */
-static  VOID   Simple_Server_Task(UNSIGNED argc, VOID *argv);
-static  STATUS Perform_Request(INT client_s);
+static  VOID   Tls_Server_Task(UNSIGNED argc, VOID *argv);
 static  VOID   Show_Active_IP_Address(VOID);
-static  STATUS Get_Local_IP_Addr_String_By_Socket(INT socketd, CHAR *buf);
-static  STATUS Get_Local_IP_Addr_By_Socket(INT socketd, UINT8 *buf);
-static  STATUS Get_Foreign_IP_Addr_String_By_Socket(INT socketd, CHAR *buf);
-static  STATUS Get_Foreign_IP_Addr_By_Socket(INT socketd, UINT8 *buf);
 
 
 /*************************************************************************
@@ -93,7 +73,7 @@ VOID Application_Initialize (NU_MEMORY_POOL* mem_pool,
     if (status == NU_SUCCESS)
     {
         /* Create the Net Sample1 task.  */
-        status = NU_Create_Task(&Simple_Server_CB, "NSAMTSK", Simple_Server_Task, 0, NU_NULL, pointer,
+        status = NU_Create_Task(&Tls_Server_CB, "TlsServer", Tls_Server_Task, 0, NU_NULL, pointer,
                                 TASK_STACK_SIZE, TASK_PRIORITY, TASK_TIMESLICE,
                                 NU_PREEMPT, NU_START);
 
@@ -110,13 +90,11 @@ VOID Application_Initialize (NU_MEMORY_POOL* mem_pool,
 *
 *   FUNCTION
 *
-*       Simple_Server_Task
+*       Tls_Server_Task
 *
 *   DESCRIPTION
 *
-*       Open a socket connection, bind the socket with the server address,
-*       listen, and accept connections.  When connected call the routine
-*       to perform request response processing.
+*       Create TLS Server and wait for connections. Echo any incomming data.
 *
 *   CALLED BY
 *
@@ -144,12 +122,15 @@ VOID Application_Initialize (NU_MEMORY_POOL* mem_pool,
 *       None
 *
 *************************************************************************/
-static VOID Simple_Server_Task(UNSIGNED argc, VOID *argv)
+static VOID Tls_Server_Task(UNSIGNED argc, VOID *argv)
 {
     STATUS              status;
     INT                 socketd, newsock;    /* Socket descriptors */
     struct addr_struct  servaddr;            /* Server address structure */
     struct addr_struct  client_addr;
+    WOLFSSL_CTX* ctx;
+    WOLFSSL* ssl;
+    CHAR* buffer[BUF_SIZE];
 
     /* Reference unused parameters to avoid toolset warnings. */
     UNUSED_PARAMETER(argc);
@@ -171,7 +152,7 @@ static VOID Simple_Server_Task(UNSIGNED argc, VOID *argv)
             servaddr.family    = NU_FAMILY_IP;
             servaddr.port      = PORT_NUM;
             PUT32(servaddr.id.is_ip_addrs, 0, IP_ADDR_ANY);
-            servaddr.name       = "SAMP1";
+            servaddr.name       = "TLSServer";
 
             /* Bind the server's address. */
             if (NU_Bind(socketd, &servaddr, 0) >= 0)
@@ -186,13 +167,39 @@ static VOID Simple_Server_Task(UNSIGNED argc, VOID *argv)
                         newsock = NU_Accept(socketd, &client_addr, 0);
                         if (newsock >= 0)
                         {
-                            printf("TCP Client has Connected.\r\n");
+                            /* Create wolfSSL context */
+                            ctx = wolfSSL_CTX_new(wolfTLSv1_2_server_method());
+                            if (ctx) {
+                                /* Set verify none */
+                                wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
 
-                            /* Process the incoming request. */
-                            status = Perform_Request(newsock);
-                            if (status != NU_SUCCESS)
-                            {
-                                printf("Perform_Request() failed.\r\n");
+                                /* TODO: Use this to load certificate to verify TLS session */
+                                //void CYASSL_load_buffer(SSL_CTX* ctx, const char** fname, int type,int size)
+
+                                /* Create new SSL object */
+                                ssl = wolfSSL_new(ctx);
+                                if (ssl) {
+                                    wolfSSL_set_fd(ssl, newsock);
+                
+                                    status = wolfSSL_accept(ssl);
+                                    if (status == SSL_SUCCESS) 
+                                    {
+                                        printf("New Connection from %d.%d.%d.%d\r\n",
+												client_addr->id.is_ip_addrs[0],
+												client_addr->id.is_ip_addrs[1],
+												client_addr->id.is_ip_addrs[2],
+												client_addr->id.is_ip_addrs[3]);
+
+                                        /* Read data */
+                                        status = wolfSSL_read(ssl, buffer, sizeof(buffer));
+                                        if (status > 0) {
+                                            /* Echo data */
+                                            wolfSSL_write(ssl, buffer, status);
+                                        }
+                                    }
+                                    wolfSSL_free(ssl);
+                                }
+                                wolfSSL_CTX_free(ctx);
                             }
 
                             NU_Close_Socket(newsock);
@@ -229,396 +236,6 @@ static VOID Simple_Server_Task(UNSIGNED argc, VOID *argv)
     {
         printf("NETBOOT_Wait_For_Network_Up() failed.\r\n");
     }
-}
-
-
-/*************************************************************************
-*
-*   FUNCTION
-*
-*       Perform_Request
-*
-*   DESCRIPTION
-*
-*       This function receives a single request and sends the response.
-*
-*   CALLED BY
-*
-*       Simple_Server_Task
-*
-*   CALLS
-*
-*       NU_Recv
-*       strcmp
-*       Get_Local_IP_Addr_String_By_Socket
-*       Get_Foreign_IP_Addr_String_By_Socket
-*       Get_Foreign_IP_Addr_By_Socket
-*       NU_Get_Host_By_Addr
-*       NU_Send
-*       printf
-*
-*   INPUTS
-*
-*       client_s           The connected socket
-*
-*   OUTPUTS
-*
-*       status             NU_SUCCESS or STATUS_FAILURE for failue
-*
-*************************************************************************/
-static STATUS Perform_Request(INT client_s)
-{
-    STATUS         status;
-    STATUS         status2;
-    char           *buffer;              /* Input buffer for GET request. */
-    char           command[FMT_SIZE];    /* Command buffer. */
-    char           resource[FMT_SIZE];   /* File name buffer. */
-    char           fmt_str[FMT_SIZE];    /* Format string buffer. */
-    int            retcode;              /* Return code. */
-    UINT8          ipaddr[MAX_ADDRESS_SIZE];
-    char           local_addr[16];
-    char           foreign_addr[16];
-    NU_HOSTENT     hentry;
-    NU_MEMORY_POOL *sys_pool_ptr;
-
-    /* Get system memory pool pointer */
-    status = NU_System_Memory_Get(&sys_pool_ptr, NU_NULL);
-
-    if (status == NU_SUCCESS)
-    {
-        /* Allocate memory for the tx/rx buffer. */
-        status = NU_Allocate_Memory(sys_pool_ptr, (void**)&buffer, BUF_SIZE, NU_NO_SUSPEND);
-
-        /* Create the Net Sample1 Task. */
-        if (status == NU_SUCCESS)
-        {
-            /* In a web browser type in the address of the Nucleus target,
-               optionally followed by /ip_addr.  Valid examples are:
-               192.168.0.22
-               192.168.0.22/
-               192.168.0.22/ip_addr
-               http://192.168.0.22
-               http://192.168.0.22/
-               http://192.168.0.22/ip_addr
-               Anything else results in a 404 response.
-               */
-
-
-            /* Receive a GET request from the Web browser. Leave room
-               for NULL terminator. */
-            retcode = NU_Recv(client_s, buffer, BUF_SIZE-1, 0);
-            if (retcode < 0)
-            {
-                printf("Receive failed\r\n");
-                status = STATUS_FAILURE;
-            }
-            else
-            {
-                /* Assure the input buffer is null terminated. */
-                buffer[retcode] = 0;
-            }
-
-
-            /*************************************************************/
-            /* Parse the command and resource identifier from the input. */
-            /*************************************************************/
-
-            /* Build up a format string for sscanf with our buffer sizes. */
-            sprintf(fmt_str, "%%%ds %%%ds \r\n", FMT_SIZE, FMT_SIZE);
-
-            /* Parse the input into the command and resource buffers. */
-            sscanf(buffer, fmt_str, command, resource);
-
-            /* Log the command string. */
-            printf("Command string '%s'\r\n", command);
-
-            /* Log the resource string. */
-            printf("Resource string '%s'\r\n", resource);
-
-
-            /* Check that command string is "GET" */
-            if (strcmp(command, "GET") != 0)
-            {
-              printf("Command is not a GET.  ('%s')\r\n", command);
-              status = STATUS_FAILURE;
-            }
-
-
-            /* Check for the resource identifier that we are interested in. Currently
-               only tests for "/", and "/ip_addr", but the list could be expanded. */
-            if (status == NU_SUCCESS)
-            {
-                /* Check for resource string is "\ip_addr" */
-                if ((strcmp(resource, "/") != 0) && (strcmp(resource, "/ip_addr") != 0))
-                {
-                  printf("Invalid resource identifier.  ('%s')\r\n", resource);
-                  status = STATUS_FAILURE;
-                }
-            }
-
-
-            /* Start sending the response. */
-            if (status == NU_SUCCESS)
-            {
-                /* Generate and send the response. */
-                printf("Sending OK response...\r\n");
-
-                /* Get the local IP address as a string. */
-                status  = Get_Local_IP_Addr_String_By_Socket(client_s, local_addr);
-
-                /* Get the foreign IP address as a string. */
-                status |= Get_Foreign_IP_Addr_String_By_Socket(client_s, foreign_addr);
-
-                /* Get the host information of the foreign host.
-                   If the DNS lookup succeeds the foreign host name
-                   will be available for output. */
-                status2  = Get_Foreign_IP_Addr_By_Socket(client_s, &ipaddr[0]);
-                status2 |= NU_Get_Host_By_Addr((CHAR *)&ipaddr[0], 4, NU_FAMILY_IP, &hentry);
-
-                if (status == NU_SUCCESS)
-                {
-                    if (status2 == NU_SUCCESS)
-                    {
-                        /* DNS lookup succeeded, output local IP address,
-                           foreign IP address, foreign hostname. */
-                        sprintf(buffer, Positive_Response1, local_addr, foreign_addr, hentry.h_name);
-                    }
-                    else
-                    {
-                        /* DNS lookup failed, output local IP address,
-                           foreign IP address. */
-                        sprintf(buffer, Positive_Response2, local_addr, foreign_addr);
-                    }
-
-                    retcode = NU_Send(client_s, buffer, strlen(buffer), 0);
-                    if (retcode <= 0)
-                    {
-                        printf("NU_Send() returns <= 0\r\n");
-                        status = STATUS_FAILURE;
-                    }
-                }
-            }
-            else
-            {
-                /* Generate and send the 404 response. */
-                printf("Sending File not found 404 response...\r\n");
-
-                retcode = NU_Send(client_s, Negative_Response, strlen(Negative_Response), 0);
-                if (retcode <= 0)
-                {
-                    printf("NU_Send() returns <= 0\r\n");
-                }
-                else
-                {
-                    strcpy(buffer, "<html><body><h1>RESOURCE NOT FOUND</h1></body></html>");
-                    retcode = NU_Send(client_s, buffer, strlen(buffer), 0);
-                    if (retcode <= 0)
-                    {
-                        printf("NU_Send() returns <= 0\r\n");
-                    }
-                }
-                status = STATUS_FAILURE;
-            }
-
-            /* Deallocate the buffer memory. */
-            NU_Deallocate_Memory(buffer);
-        }
-    }
-
-    return (status);
-}
-
-
-/*************************************************************************
-*
-*   FUNCTION
-*
-*       Get_Local_IP_Addr_String_By_Socket
-*
-*   DESCRIPTION
-*
-*       This function gets the local IP address of the given socket
-*       and converts it into an ASCII string in the given buffer.
-*
-*   CALLED BY
-*
-*       Perform_Request
-*
-*   CALLS
-*
-*       Get_Local_IP_Addr_By_Socket
-*
-*   INPUTS
-*
-*       socketd            Socket for which we want the local IP Address.
-*       buf                Buffer to receive the IP address string.
-*
-*   OUTPUTS
-*
-*       status             NU_SUCCESS or STATUS_FAILURE
-*
-*************************************************************************/
-static STATUS Get_Local_IP_Addr_String_By_Socket(INT socketd, CHAR *buf)
-{
-    STATUS status;
-    UINT8  ipaddr[MAX_ADDRESS_SIZE];
-
-
-    /* Get the local IP address for the socket. */
-    status = Get_Local_IP_Addr_By_Socket(socketd, &ipaddr[0]);
-
-    /* Convert the local IP address to an ASCII string. */
-    if ( status == NU_SUCCESS)
-    {
-        status = NU_Inet_NTOP(NU_FAMILY_IP, &ipaddr[0], buf, 16);
-    }
-
-    return (status);
-}
-
-
-/*************************************************************************
-*
-*   FUNCTION
-*
-*       Get_Local_IP_Addr_By_Socket
-*
-*   DESCRIPTION
-*
-*       This function gets the local IP address of the given socket.
-*
-*   CALLED BY
-*
-*       Get_Local_IP_Addr_String_By_Socket
-*
-*   CALLS
-*
-*       None.
-*
-*   INPUTS
-*
-*       socketd            Socket for which we want the local IP Address.
-*       addrp              Points to location to put the IP address.
-*
-*   OUTPUTS
-*
-*       status             NU_SUCCESS or STATUS_FAILURE
-*
-*************************************************************************/
-static STATUS Get_Local_IP_Addr_By_Socket(INT socketd, UINT8 *addrp)
-{
-    STATUS  status;
-    INT16   addrLength;
-    struct  sockaddr_struct sock;
-
-    addrLength = sizeof(struct sockaddr_struct);
-
-    /* Get the client's address info. */
-    status = NU_Get_Sock_Name(socketd, &sock, &addrLength);
-
-    if (status == NU_SUCCESS)
-    {
-        memcpy(addrp, &sock.ip_num, MAX_ADDRESS_SIZE);
-    }
-
-    return (status);
-}
-
-
-/*************************************************************************
-*
-*   FUNCTION
-*
-*       Get_Foreign_IP_Addr_String_By_Socket
-*
-*   DESCRIPTION
-*
-*       This function gets the foreign IP address of the given socket
-*       and converts it into an ASCII string in the given buffer.
-*
-*   CALLED BY
-*
-*       Perform_Request
-*
-*   CALLS
-*
-*       Get_Foreign_IP_Addr_By_Socket
-*
-*   INPUTS
-*
-*       socketd            Socket for which we want the foreign IP Address.
-*       buf                Buffer to receive the IP address string.
-*
-*   OUTPUTS
-*
-*       status             NU_SUCCESS or STATUS_FAILURE
-*
-*************************************************************************/
-static STATUS Get_Foreign_IP_Addr_String_By_Socket(INT socketd, CHAR *buf)
-{
-    STATUS status;
-    UINT8  ipaddr[MAX_ADDRESS_SIZE];
-
-
-    /* Get the foreign IP address for the socket. */
-    status = Get_Foreign_IP_Addr_By_Socket(socketd, &ipaddr[0]);
-
-    /* Convert the foreign ip addr to ASCII */
-    if ( status == NU_SUCCESS)
-    {
-        status = NU_Inet_NTOP(NU_FAMILY_IP, &ipaddr[0], buf, 16);
-    }
-
-    return (status);
-}
-
-
-/*************************************************************************
-*
-*   FUNCTION
-*
-*       Get_Foreign_IP_Addr_By_Socket
-*
-*   DESCRIPTION
-*
-*       This function gets the foreign IP address of the given socket.
-*
-*   CALLED BY
-*
-*       Get_Foreign_IP_Addr_String_By_Socket
-*
-*   CALLS
-*
-*       None.
-*
-*   INPUTS
-*
-*       socketd            Socket for which we want the foreign IP Address.
-*       addrp              Points to location to put the IP address.
-*
-*   OUTPUTS
-*
-*       status             NU_SUCCESS or STATUS_FAILURE
-*
-*************************************************************************/
-static STATUS Get_Foreign_IP_Addr_By_Socket(INT socketd, UINT8 *addrp)
-{
-    STATUS  status;
-    INT16   addrLength;
-    struct  sockaddr_struct peer;
-
-
-    addrLength = sizeof(struct sockaddr_struct);
-
-    /* Get the client's address info. */
-    status = NU_Get_Peer_Name(socketd, &peer, &addrLength);
-
-    if (status == NU_SUCCESS)
-    {
-        memcpy(addrp, &peer.ip_num, MAX_ADDRESS_SIZE);
-    }
-
-    return (status);
 }
 
 /*************************************************************************
@@ -667,13 +284,12 @@ VOID Show_Active_IP_Address(VOID)
         if (status == NU_SUCCESS)
         {
             /* Got an UP interface */
-            printf("Open the following Nucleus node address in your web browser:\r\n");
-            /* Print IP Address */
-            printf("    http://%d.%d.%d.%d:8080/\r\n",
+            printf("TLS Server Running at %d.%d.%d.%d, port %d\r\n",
                     ioctl_opt.s_ret.s_ipaddr[0],
                     ioctl_opt.s_ret.s_ipaddr[1],
                     ioctl_opt.s_ret.s_ipaddr[2],
-                    ioctl_opt.s_ret.s_ipaddr[3]);
+                    ioctl_opt.s_ret.s_ipaddr[3],
+                    PORT_NUM);
             break;
             
         }
