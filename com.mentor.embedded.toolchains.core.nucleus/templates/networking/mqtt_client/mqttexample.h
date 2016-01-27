@@ -1,4 +1,4 @@
-/* mqttexamples.h
+/* mqttexample.h
  *
  * Copyright (C) 2006-2015 wolfSSL Inc.
  *
@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef WOLFMQTT_EXAMPLES_H
-#define WOLFMQTT_EXAMPLES_H
+#ifndef WOLFMQTT_EXAMPLE_H
+#define WOLFMQTT_EXAMPLE_H
 
 #ifdef __cplusplus
     extern "C" {
@@ -30,7 +30,7 @@
 #ifdef NUCLEUS
     #define NO_MAIN_DRIVER
     #define NO_EXIT
-    #define LINE_END	"\n\r"
+    #define LINE_END	"\r\n"
 #endif
 
 #ifdef NO_EXIT
@@ -152,4 +152,4 @@ static INLINE int err_sys(const char* msg)
     } /* extern "C" */
 #endif
 
-#endif /* WOLFMQTT_EXAMPLES_H */
+#endif /* WOLFMQTT_EXAMPLE_H */

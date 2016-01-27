@@ -185,10 +185,10 @@ static VOID Tls_Server_Task(UNSIGNED argc, VOID *argv)
                                     if (status == SSL_SUCCESS) 
                                     {
                                         printf("New Connection from %d.%d.%d.%d\r\n",
-												client_addr->id.is_ip_addrs[0],
-												client_addr->id.is_ip_addrs[1],
-												client_addr->id.is_ip_addrs[2],
-												client_addr->id.is_ip_addrs[3]);
+												client_addr.id.is_ip_addrs[0],
+												client_addr.id.is_ip_addrs[1],
+												client_addr.id.is_ip_addrs[2],
+												client_addr.id.is_ip_addrs[3]);
 
                                         /* Read data */
                                         status = wolfSSL_read(ssl, buffer, sizeof(buffer));
